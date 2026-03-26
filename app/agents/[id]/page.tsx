@@ -8,6 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/ErrorState"
 import { AgentAvatar } from "@/components/AgentAvatar"
 import { useSettings } from "@/app/settings-provider"
+import { useGateway } from "@/components/GatewayProvider"
+import { cronList, agentsList } from "@/lib/gateway-ws-client"
 
 function resizeImage(file: File, maxSize: number): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -258,6 +260,7 @@ export default function AgentDetailPage({
   const { id } = use(params)
   const router = useRouter()
   const { settings, setAgentOverride, clearAgentOverride } = useSettings()
+  const { isConnected, connect } = useGateway()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [agent, setAgent] = useState<Agent | null>(null)
   const [allAgents, setAllAgents] = useState<Agent[]>([])
@@ -265,28 +268,77 @@ export default function AgentDetailPage({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const loadData = useCallback(() => {
+  const loadData = useCallback(async () => {
     setLoading(true)
     setError(null)
-    Promise.all([
-      fetch("/api/agents").then((r) => {
-        if (!r.ok) throw new Error("Failed to fetch agents")
-        return r.json()
-      }),
-      fetch("/api/crons").then((r) => {
-        if (!r.ok) throw new Error("Failed to fetch crons")
-        return r.json()
-      }),
-    ])
-      .then(([agents, cronData]) => {
-        const cronList: CronJob[] = Array.isArray(cronData) ? cronData : cronData.crons ?? []
-        setAllAgents(agents)
-        setAgent(agents.find((a: Agent) => a.id === id) || null)
-        setCrons(cronList.filter((cr: CronJob) => cr.agentId === id))
+    try {
+      if (!isConnected) {
+        await connect()
+      }
+      const [agentsRaw, jobs] = await Promise.all([
+        agentsList(),
+        cronList(),
+      ])
+
+      // Transform agents
+      const agents: Agent[] = (agentsRaw as Record<string, unknown>[]).map((a) => ({
+        id: String(a.id || ''),
+        name: String(a.identityName || a.id || ''),
+        title: 'Agent',
+        reportsTo: null,
+        directReports: [],
+        soulPath: null,
+        voiceId: null,
+        color: '#888',
+        emoji: '🤖',
+        tools: [],
+        model: typeof a.model === 'string' ? a.model : null,
+        memoryPath: null,
+        description: '',
+        soul: null,
+        crons: [],
+      }))
+
+      // Transform crons
+      const cronJobs: CronJob[] = (jobs as Record<string, unknown>[]).map((j) => {
+        const state = (j.state as Record<string, unknown>) || {}
+        const rawStatus = state.status ?? j.status ?? ""
+        let status: 'ok' | 'error' | 'idle' = 'idle'
+        if (rawStatus === 'error' || rawStatus === 'failed') status = 'error'
+        else if (rawStatus === 'ok' || rawStatus === 'success' || rawStatus === 'completed') status = 'ok'
+
+        const nextRunMs = state.nextRunAtMs ?? state.nextRunAt ?? j.nextRunAtMs ?? j.nextRunAt
+        const lastRunRaw = state.lastRunAtMs ?? state.lastRunAt ?? j.lastRunAtMs ?? j.lastRunAt ?? j.last
+
+        return {
+          id: String(j.id || j.name || ''),
+          name: String(j.name || ''),
+          schedule: String(j.schedule || ''),
+          scheduleDescription: '',
+          timezone: (j.timezone as string) ?? null,
+          status,
+          lastRun: lastRunRaw ? (typeof lastRunRaw === 'number' ? new Date(lastRunRaw).toISOString() : String(lastRunRaw)) : null,
+          nextRun: nextRunMs ? new Date(Number(nextRunMs)).toISOString() : null,
+          lastError: (state.lastError ?? state.error ?? j.lastError) ? String(state.lastError ?? state.error ?? j.lastError) : null,
+          agentId: null,
+          description: typeof j.description === 'string' ? j.description : null,
+          enabled: j.enabled !== false,
+          delivery: null,
+          lastDurationMs: typeof state.lastDurationMs === 'number' ? state.lastDurationMs : null,
+          consecutiveErrors: typeof state.consecutiveErrors === 'number' ? state.consecutiveErrors : 0,
+          lastDeliveryStatus: typeof state.lastDeliveryStatus === 'string' ? state.lastDeliveryStatus : null,
+        }
       })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [id])
+
+      setAllAgents(agents)
+      setAgent(agents.find((a: Agent) => a.id === id) || null)
+      setCrons(cronJobs.filter((cr: CronJob) => cr.agentId === id))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [id, isConnected, connect])
 
   useEffect(() => {
     loadData()

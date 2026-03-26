@@ -4,7 +4,7 @@ import { loadRegistry } from '@/lib/agents-registry'
 
 export async function getAgents(): Promise<Agent[]> {
   const workspacePath = process.env.WORKSPACE_PATH || ''
-  const registry = loadRegistry()
+  const registry = await loadRegistry()
 
   return registry.map((entry) => {
     let soul: string | null = null

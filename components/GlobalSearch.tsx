@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import type { CronJob } from '@/lib/types';
 import { useAgentsContext } from '@/app/agents-provider';
+import { useGateway } from '@/components/GatewayProvider';
+import { cronList } from '@/lib/gateway-ws-client';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -112,6 +114,7 @@ export function GlobalSearch() {
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const { agents } = useAgentsContext();
+  const { isConnected, connect } = useGateway();
   const [crons, setCrons] = useState<CronJob[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -150,17 +153,49 @@ export function GlobalSearch() {
     // Reset state
     setQuery('');
     setActiveIndex(0);
-    // Fetch crons (agents come from context)
-    fetch('/api/crons')
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((data: unknown) => {
-        setCrons(Array.isArray(data) ? data as CronJob[] : (data as { crons?: CronJob[] })?.crons ?? []);
-      })
-      .catch(() => setCrons([]));
-  }, [open]);
+    // Fetch crons via WebSocket RPC
+    async function loadCrons() {
+      try {
+        if (!isConnected) {
+          await connect()
+        }
+        const jobs = await cronList()
+        const transformed: CronJob[] = (jobs as Record<string, unknown>[]).map((j) => {
+          const state = (j.state as Record<string, unknown>) || {}
+          const rawStatus = state.status ?? j.status ?? ''
+          let status: 'ok' | 'error' | 'idle' = 'idle'
+          if (rawStatus === 'error' || rawStatus === 'failed') status = 'error'
+          else if (rawStatus === 'ok' || rawStatus === 'success' || rawStatus === 'completed') status = 'ok'
+
+          const nextRunMs = state.nextRunAtMs ?? state.nextRunAt ?? j.nextRunAtMs ?? j.nextRunAt
+          const lastRunRaw = state.lastRunAtMs ?? state.lastRunAt ?? j.lastRunAtMs ?? j.lastRunAt ?? j.last
+
+          return {
+            id: String(j.id || j.name || ''),
+            name: String(j.name || ''),
+            schedule: String(j.schedule || ''),
+            scheduleDescription: '',
+            timezone: (j.timezone as string) ?? null,
+            status,
+            lastRun: lastRunRaw ? (typeof lastRunRaw === 'number' ? new Date(lastRunRaw).toISOString() : String(lastRunRaw)) : null,
+            nextRun: nextRunMs ? new Date(Number(nextRunMs)).toISOString() : null,
+            lastError: (state.lastError ?? state.error ?? j.lastError) ? String(state.lastError ?? state.error ?? j.lastError) : null,
+            agentId: null,
+            description: typeof j.description === 'string' ? j.description : null,
+            enabled: j.enabled !== false,
+            delivery: null,
+            lastDurationMs: typeof state.lastDurationMs === 'number' ? state.lastDurationMs : null,
+            consecutiveErrors: typeof state.consecutiveErrors === 'number' ? state.consecutiveErrors : 0,
+            lastDeliveryStatus: typeof state.lastDeliveryStatus === 'string' ? state.lastDeliveryStatus : null,
+          }
+        })
+        setCrons(transformed)
+      } catch {
+        setCrons([])
+      }
+    }
+    loadCrons()
+  }, [open, isConnected, connect]);
 
   // -----------------------------------------------------------------------
   // Focus input when opened

@@ -7,6 +7,7 @@ import { MobileSidebar } from '@/components/MobileSidebar';
 import { SidebarUsageWidget } from '@/components/sidebar/SidebarUsageWidget';
 import { GlobalSearch, SearchTrigger } from '@/components/GlobalSearch';
 import { useSettings } from '@/app/settings-provider';
+import { useAgentsSlot } from '@/components/AgentsSlotContext';
 
 /**
  * Sidebar -- client wrapper that coordinates desktop sidebar, mobile sidebar,
@@ -14,6 +15,7 @@ import { useSettings } from '@/app/settings-provider';
  */
 export function Sidebar() {
   const { settings } = useSettings();
+  const { agentsSlot } = useAgentsSlot();
   const openSearch = useCallback(() => {
     // We trigger the search modal by simulating Cmd+K.
     // Instead, we expose a controlled open state via a custom event.
@@ -94,7 +96,11 @@ export function Sidebar() {
           <SearchTrigger onClick={openSearch} />
         </div>
 
-        <NavLinks bottomSlot={<SidebarUsageWidget />} />
+        <NavLinks
+          bottomSlot={<SidebarUsageWidget />}
+          agentsSlot={agentsSlot}
+        />
+
         <ThemeToggle />
       </aside>
 

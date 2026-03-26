@@ -1,13 +1,15 @@
 'use client';
 
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
 import { Map, MessageSquare, Clock, Activity, Brain, Columns3, BookOpen, Settings, DollarSign } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { CronJob } from '@/lib/types';
 import { useSettings } from '@/app/settings-provider';
 import { useAgentsContext } from '@/app/agents-provider';
+import { useGateway } from '@/components/GatewayProvider';
+import { cronList } from '@/lib/gateway-ws-client';
 
 function getInitials(name: string | null): string {
   if (!name) return '??'
@@ -30,7 +32,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Map', icon: Map, badge: 'agents' },
   { href: '/kanban', label: 'Kanban', icon: Columns3 },
-  { href: '/chat', label: 'Messages', icon: MessageSquare, badge: 'unread' },
+  { href: '/chat', label: 'Agents', icon: MessageSquare, badge: 'unread' },
   { href: '/crons', label: 'Crons', icon: Clock, badge: 'errors' },
   { href: '/activity', label: 'Activity', icon: Activity },
   { href: '/costs', label: 'Costs', icon: DollarSign },
@@ -43,32 +45,37 @@ const NAV_ITEMS: NavItem[] = [
 // NavLinks component
 // ---------------------------------------------------------------------------
 
-export function NavLinks({ bottomSlot }: { bottomSlot?: React.ReactNode } = {}) {
+export function NavLinks({ bottomSlot, agentsSlot }: { bottomSlot?: React.ReactNode; agentsSlot?: React.ReactNode } = {}) {
   const pathname = usePathname();
   const { settings } = useSettings();
   const { agents } = useAgentsContext();
+  const { isConnected, connect } = useGateway();
   const agentCount = agents.length > 0 ? agents.length : null;
   const [cronCount, setCronCount] = useState<number | null>(null);
   const [cronErrorCount, setCronErrorCount] = useState<number | null>(null);
 
-  // Fetch cron error count
+  // Fetch cron error count via WebSocket RPC
   useEffect(() => {
-    fetch('/api/crons')
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((data: unknown) => {
-        const crons: CronJob[] = Array.isArray(data)
-          ? data
-          : (data as { crons?: CronJob[] })?.crons ?? [];
-        setCronCount(crons.length);
-        setCronErrorCount(crons.filter((c) => c.status === 'error').length);
-      })
-      .catch(() => {
-        setCronErrorCount(null);
-      });
-  }, []);
+    async function loadCrons() {
+      try {
+        if (!isConnected) {
+          await connect()
+        }
+        const jobs = await cronList()
+        const crons = jobs as Record<string, unknown>[]
+        setCronCount(crons.length)
+        const errorCount = crons.filter((c) => {
+          const state = (c.state as Record<string, unknown>) || {}
+          const rawStatus = state.status ?? c.status ?? ''
+          return rawStatus === 'error' || rawStatus === 'failed'
+        }).length
+        setCronErrorCount(errorCount)
+      } catch {
+        setCronErrorCount(null)
+      }
+    }
+    loadCrons()
+  }, [isConnected, connect])
 
   // Resolve badge content per nav item
   function getBadge(item: NavItem): React.ReactNode {
@@ -163,40 +170,44 @@ export function NavLinks({ bottomSlot }: { bottomSlot?: React.ReactNode } = {}) 
                 : pathname.startsWith(item.href);
 
             const Icon = item.icon;
+            const isAgentsItem = item.href === '/chat';
 
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`nav-item focus-ring ${isActive ? 'nav-item-active' : ''}`}
-                aria-label={item.label}
-                aria-current={isActive ? 'page' : undefined}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  minHeight: '36px',
-                  padding: '0 10px 0 12px',
-                  borderRadius: '8px',
-                  fontSize: '13px',
-                  fontWeight: isActive ? 600 : 500,
-                  color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
-                  background: isActive ? 'var(--accent-fill)' : 'transparent',
-                  textDecoration: 'none',
-                  transition: 'all 100ms var(--ease-smooth)',
-                }}
-              >
-                <Icon
-                  size={16}
+              <React.Fragment key={item.href}>
+                <Link
+                  href={item.href}
+                  className={`nav-item focus-ring ${isActive ? 'nav-item-active' : ''}`}
+                  aria-label={item.label}
+                  aria-current={isActive ? 'page' : undefined}
                   style={{
-                    flexShrink: 0,
-                    color: isActive ? 'var(--accent)' : 'var(--text-tertiary)',
-                    transition: 'color 100ms var(--ease-smooth)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    minHeight: '36px',
+                    padding: '0 10px 0 12px',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: isActive ? 600 : 500,
+                    color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                    background: isActive ? 'var(--accent-fill)' : 'transparent',
+                    textDecoration: 'none',
+                    transition: 'all 100ms var(--ease-smooth)',
                   }}
-                />
-                <span style={{ flex: 1 }}>{item.label}</span>
-                {getBadge(item)}
-              </Link>
+                >
+                  <Icon
+                    size={16}
+                    style={{
+                      flexShrink: 0,
+                      color: isActive ? 'var(--accent)' : 'var(--text-tertiary)',
+                      transition: 'color 100ms var(--ease-smooth)',
+                    }}
+                  />
+                  <span style={{ flex: 1 }}>{item.label}</span>
+                  {getBadge(item)}
+                </Link>
+                {/* Render agents slot right after Agents nav item */}
+                {isAgentsItem && agentsSlot}
+              </React.Fragment>
             );
           })}
         </div>

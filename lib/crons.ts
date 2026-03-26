@@ -1,9 +1,7 @@
 import { CronJob, CronDelivery } from '@/lib/types'
-import { execSync } from 'child_process'
 import { parseSchedule, describeCron } from './cron-utils'
-import { requireEnv } from '@/lib/env'
 import { loadRegistry } from '@/lib/agents-registry'
-import { extractJson } from '@/lib/cli-utils'
+import { cronList } from './gateway-websocket'
 
 /**
  * Match a cron job name to an agent by prefix.
@@ -32,19 +30,11 @@ export async function getCrons(): Promise<CronJob[]> {
   }
 
   try {
-    const openclawBin = requireEnv('OPENCLAW_BIN')
-    const raw = execSync(`${openclawBin} cron list --json`, {
-      encoding: 'utf-8',
-      timeout: 10000,
-    })
-
-    const parsed = extractJson(raw) as Record<string, unknown>
-    const jobs: unknown[] = Array.isArray(parsed)
-      ? parsed
-      : (parsed.jobs ?? parsed.data ?? []) as unknown[]
+    // Use WebSocket RPC instead of CLI
+    const jobs = await cronList()
 
     // Load known agent IDs for dynamic cron-to-agent matching
-    const agentIds = loadRegistry().map(a => a.id)
+    const agentIds = (await loadRegistry()).map(a => a.id)
 
     const result = jobs.map((job: unknown) => {
       const j = job as Record<string, unknown>

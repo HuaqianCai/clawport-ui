@@ -1,8 +1,8 @@
 import type { MemoryFileInfo, MemoryConfig, MemoryStatus, MemoryStats } from '@/lib/types'
 import { readFileSync, existsSync, statSync, readdirSync } from 'fs'
 import { join, basename, dirname } from 'path'
-import { execSync } from 'child_process'
 import { requireEnv } from '@/lib/env'
+import { memoryStatus } from './gateway-websocket'
 
 // ── Date pattern for daily logs ─────────────────────────────────
 
@@ -195,7 +195,7 @@ export function getMemoryConfig(): MemoryConfig {
 
 // ── getMemoryStatus ─────────────────────────────────────────────
 
-export function getMemoryStatus(): MemoryStatus {
+export async function getMemoryStatus(): Promise<MemoryStatus> {
   const defaults: MemoryStatus = {
     indexed: false,
     lastIndexed: null,
@@ -205,34 +205,15 @@ export function getMemoryStatus(): MemoryStatus {
     raw: 'Memory status unavailable',
   }
 
-  let bin: string
   try {
-    bin = requireEnv('OPENCLAW_BIN')
-  } catch {
-    return defaults
-  }
-
-  try {
-    const output = execSync(`${bin} memory status --deep`, {
-      timeout: 15000,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim()
-
-    // Try JSON parse first
-    try {
-      const data = JSON.parse(output)
-      return {
-        indexed: data.indexed ?? false,
-        lastIndexed: data.lastIndexed ?? null,
-        totalEntries: data.totalEntries ?? null,
-        vectorAvailable: data.vectorAvailable ?? null,
-        embeddingProvider: data.embeddingProvider ?? null,
-        raw: output,
-      }
-    } catch {
-      // Plain text fallback
-      return { ...defaults, raw: output }
+    const data = await memoryStatus(true) as Record<string, unknown>
+    return {
+      indexed: (data.indexed as boolean) ?? false,
+      lastIndexed: (data.lastIndexed as string) ?? null,
+      totalEntries: (data.totalEntries as number) ?? null,
+      vectorAvailable: (data.vectorAvailable as boolean) ?? null,
+      embeddingProvider: (data.embeddingProvider as string) ?? null,
+      raw: JSON.stringify(data),
     }
   } catch {
     return defaults

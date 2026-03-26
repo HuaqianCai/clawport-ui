@@ -13,6 +13,8 @@ import { WeeklySchedule } from "@/components/crons/WeeklySchedule";
 import { PipelineGraph } from "@/components/crons/PipelineGraph";
 import { PipelineDetailPanel } from "@/components/crons/PipelineDetailPanel";
 import { PipelineWizard } from "@/components/crons/PipelineWizard";
+import { useGateway } from "@/components/GatewayProvider";
+import { cronList } from "@/lib/gateway-ws-client";
 
 /* ─── Types ─────────────────────────────────────────────────────── */
 
@@ -392,6 +394,7 @@ function RecentRuns({ jobId }: { jobId: string }) {
 
 export default function CronsPage() {
   const { agents } = useAgentsContext();
+  const { isConnected, connect } = useGateway();
   const [crons, setCrons] = useState<CronJob[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
@@ -408,32 +411,84 @@ export default function CronsPage() {
 
   const pillsRef = useRef<HTMLDivElement>(null);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     setRefreshing(true);
     setError(null);
-    fetch("/api/crons")
-      .then((r) => {
-        if (!r.ok) throw new Error("Failed to load crons");
-        return r.json();
-      })
-      .then((cronData) => {
-        if (Array.isArray(cronData)) {
-          setCrons(cronData);
-          setPipelines([]);
-        } else {
-          setCrons(cronData.crons);
-          setPipelines(cronData.pipelines || []);
+    try {
+      // Ensure connected before making RPC call
+      if (!isConnected) {
+        await connect();
+      }
+
+      // Fetch crons via WebSocket RPC
+      const jobs = await cronList();
+
+      // Also fetch pipelines from HTTP API (kept for now)
+      const pipelinesRes = await fetch("/api/pipelines");
+      const pipelinesData = pipelinesRes.ok ? await pipelinesRes.json() : [];
+
+      // Transform raw jobs to CronJob format
+      const transformedCrons: CronJob[] = (jobs as Record<string, unknown>[]).map((j) => {
+        const state = (j.state as Record<string, unknown>) || {};
+        const name = String(j.name || "");
+        const { expression: schedule, timezone } = { expression: j.schedule as string, timezone: j.timezone as string | null };
+
+        const rawStatus = state.status ?? j.status ?? "";
+        let status: 'ok' | 'error' | 'idle' = 'idle';
+        if (rawStatus === 'error' || rawStatus === 'failed') status = 'error';
+        else if (rawStatus === 'ok' || rawStatus === 'success' || rawStatus === 'completed') status = 'ok';
+
+        const nextRunMs = state.nextRunAtMs ?? state.nextRunAt ?? j.nextRunAtMs ?? j.nextRunAt;
+        const nextRun = nextRunMs ? new Date(Number(nextRunMs)).toISOString() : null;
+
+        const lastRunRaw = state.lastRunAtMs ?? state.lastRunAt ?? j.lastRunAtMs ?? j.lastRunAt ?? j.last;
+        const lastRun = lastRunRaw
+          ? (typeof lastRunRaw === 'number' ? new Date(lastRunRaw).toISOString() : String(lastRunRaw))
+          : null;
+
+        const lastError = (state.lastError ?? state.error ?? j.lastError) ? String(state.lastError ?? state.error ?? j.lastError) : null;
+
+        const rawDelivery = j.delivery as Record<string, unknown> | undefined;
+        let delivery = null;
+        if (rawDelivery && typeof rawDelivery === 'object') {
+          delivery = {
+            mode: String(rawDelivery.mode || ''),
+            channel: String(rawDelivery.channel || ''),
+            to: rawDelivery.to ? String(rawDelivery.to) : null,
+          };
         }
-        setLastRefresh(new Date());
-        setLoading(false);
-        setRefreshing(false);
-      })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : "Unknown error");
-        setLoading(false);
-        setRefreshing(false);
+
+        return {
+          id: String(j.id || j.name || ''),
+          name,
+          schedule: schedule || '',
+          scheduleDescription: '',
+          timezone: timezone ?? null,
+          status,
+          lastRun,
+          nextRun,
+          lastError,
+          agentId: null,
+          description: typeof j.description === 'string' ? j.description : null,
+          enabled: j.enabled !== false,
+          delivery,
+          lastDurationMs: typeof state.lastDurationMs === 'number' ? state.lastDurationMs : null,
+          consecutiveErrors: typeof state.consecutiveErrors === 'number' ? state.consecutiveErrors : 0,
+          lastDeliveryStatus: typeof state.lastDeliveryStatus === 'string' ? state.lastDeliveryStatus : null,
+        };
       });
-  }, []);
+
+      setCrons(transformedCrons);
+      setPipelines(Array.isArray(pipelinesData) ? pipelinesData : []);
+      setLastRefresh(new Date());
+      setLoading(false);
+      setRefreshing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [isConnected, connect]);
 
   useEffect(() => {
     refresh();

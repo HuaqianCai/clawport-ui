@@ -1,62 +1,33 @@
-import { spawn } from 'child_process'
-import { requireEnv } from '@/lib/env'
+import { subscribeStream } from '@/lib/gateway-websocket'
+import type { RpcResponse } from '@/lib/gateway-websocket'
 
 const MAX_LIFETIME_MS = 10 * 60 * 1000 // 10 minutes
 const HEARTBEAT_INTERVAL_MS = 15 * 1000 // 15 seconds
 
 export async function GET(request: Request) {
   const encoder = new TextEncoder()
-  let child: ReturnType<typeof spawn> | null = null
   let heartbeat: ReturnType<typeof setInterval> | null = null
   let lifetime: ReturnType<typeof setTimeout> | null = null
+  let releaseStream: (() => void) | null = null
 
   const stream = new ReadableStream({
-    start(controller) {
-      const openclawBin = requireEnv('OPENCLAW_BIN')
-
+    async start(controller) {
       try {
-        child = spawn(openclawBin, ['logs', '--follow', '--json'], {
-          stdio: ['ignore', 'pipe', 'pipe'],
+        // Subscribe to logs.tail via WebSocket RPC
+        releaseStream = await subscribeStream('logs.tail', {}, (event: RpcResponse) => {
+          try {
+            const data = event.params ?? event
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+          } catch {
+            // Controller may be closed
+          }
         })
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Failed to spawn openclaw'
+        const msg = err instanceof Error ? err.message : 'Failed to subscribe to logs'
         controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: msg })}\n\n`))
         controller.close()
         return
       }
-
-      let buffer = ''
-
-      child.stdout?.on('data', (chunk: Buffer) => {
-        buffer += chunk.toString()
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-        for (const line of lines) {
-          if (!line.trim()) continue
-          controller.enqueue(encoder.encode(`data: ${line}\n\n`))
-        }
-      })
-
-      child.stderr?.on('data', (chunk: Buffer) => {
-        const msg = chunk.toString().trim()
-        if (msg) {
-          controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: msg })}\n\n`))
-        }
-      })
-
-      child.on('error', (err) => {
-        controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`))
-        cleanup()
-        controller.close()
-      })
-
-      child.on('close', (code) => {
-        if (code !== null && code !== 0) {
-          controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: `Process exited with code ${code}` })}\n\n`))
-        }
-        cleanup()
-        controller.close()
-      })
 
       // Heartbeat to prevent proxy timeouts
       heartbeat = setInterval(() => {
@@ -87,7 +58,10 @@ export async function GET(request: Request) {
       function cleanup() {
         if (heartbeat) { clearInterval(heartbeat); heartbeat = null }
         if (lifetime) { clearTimeout(lifetime); lifetime = null }
-        if (child) { child.kill('SIGTERM'); child = null }
+        if (releaseStream) {
+          releaseStream()
+          releaseStream = null
+        }
       }
     },
   })

@@ -3,13 +3,13 @@
  *
  * The gateway's /v1/chat/completions endpoint strips image_url content parts.
  * Images work through the agent pipeline (chat.send), which is the same path
- * Discord/Telegram/etc use. We invoke the CLI to send, then poll chat.history.
+ * Discord/Telegram/etc use. We use WebSocket RPC to send, then poll chat.history.
  *
- * Flow: extract images → CLI chat.send → poll chat.history → extract response
+ * Flow: extract images → WebSocket chat.send → poll chat.history → extract response
  */
 
-import { execFile } from 'child_process'
 import type { ApiMessage, ContentPart } from './validation'
+import { chatSend, chatHistory } from './gateway-websocket'
 
 export interface OpenClawAttachment {
   mimeType: string
@@ -79,103 +79,57 @@ export function buildTextPrompt(systemPrompt: string, messages: ApiMessage[]): s
 }
 
 /**
- * Run openclaw CLI and return stdout, or null on error.
- */
-export function execCli(
-  bin: string,
-  args: string[],
-  timeoutMs: number
-): Promise<string | null> {
-  return new Promise((resolve) => {
-    execFile(bin, args, { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) {
-        console.error('execCli error:', err.message)
-        if (stderr) console.error('stderr:', stderr)
-        resolve(null)
-        return
-      }
-      resolve(stdout)
-    })
-  })
-}
-
-/**
- * Send a vision message through the OpenClaw gateway via CLI.
+ * Send a vision message through the OpenClaw gateway via WebSocket RPC.
  *
  * Two-step process:
- * 1. `openclaw gateway call chat.send` — fires the message (returns immediately)
- * 2. Poll `openclaw gateway call chat.history` — wait for the assistant response
+ * 1. `chat.send` — fires the message (returns immediately)
+ * 2. Poll `chat.history` — wait for the assistant response
  *
  * Images must be resized client-side to fit within the OS argument size limit.
  *
  * Returns the assistant's response text, or null on failure.
  */
 export async function sendViaOpenClaw(opts: {
-  gatewayToken: string
   message: string
   attachments: OpenClawAttachment[]
   sessionKey?: string
   timeoutMs?: number
 }): Promise<string | null> {
-  const openclawBin = process.env.OPENCLAW_BIN || 'openclaw'
   const sessionKey = opts.sessionKey || 'agent:main:clawport'
   const idempotencyKey = `clawport-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   const timeoutMs = opts.timeoutMs || 60000
-  const token = opts.gatewayToken
 
   // Timestamp before sending — used to identify the new response
   const sendTs = Date.now()
 
-  // Step 1: Send the message via chat.send
-  const sendParams = JSON.stringify({
-    sessionKey,
-    idempotencyKey,
-    message: opts.message,
-    attachments: opts.attachments,
-  })
-
-  const sendResult = await execCli(openclawBin, [
-    'gateway', 'call', 'chat.send',
-    '--params', sendParams,
-    '--token', token,
-    '--json',
-  ], 15000)
-
-  if (sendResult === null) {
-    return null
-  }
-
-  // Verify send was accepted
+  // Step 1: Send the message via chat.send RPC
   try {
-    const sendData = JSON.parse(sendResult)
-    if (sendData.status !== 'started' && !sendData.runId) {
+    const sendResult = await chatSend({
+      sessionKey,
+      idempotencyKey,
+      message: opts.message,
+      attachments: opts.attachments,
+    })
+
+    // Verify send was accepted
+    if (sendResult.status !== 'started' && !sendResult.runId) {
       console.error('sendViaOpenClaw: unexpected send response:', sendResult)
       return null
     }
-  } catch {
-    console.error('sendViaOpenClaw: failed to parse send response:', sendResult)
+  } catch (err) {
+    console.error('sendViaOpenClaw: chat.send error:', err)
     return null
   }
 
   // Step 2: Poll chat.history for the assistant response
   const pollIntervalMs = 2000
-  const historyParams = JSON.stringify({ sessionKey })
   const deadline = sendTs + timeoutMs
 
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, pollIntervalMs))
 
-    const historyResult = await execCli(openclawBin, [
-      'gateway', 'call', 'chat.history',
-      '--params', historyParams,
-      '--token', token,
-      '--json',
-    ], 10000)
-
-    if (!historyResult) continue
-
     try {
-      const history = JSON.parse(historyResult)
+      const history = await chatHistory(sessionKey)
       const messages = history.messages || []
       if (messages.length === 0) continue
 
@@ -187,14 +141,14 @@ export async function sendViaOpenClaw(opts: {
         if (typeof content === 'string') return content
         if (Array.isArray(content)) {
           const textParts = content
-            .filter((p: { type: string }) => p.type === 'text')
-            .map((p: { text: string }) => p.text)
+            .filter((p: { type: string; text?: string }) => p.type === 'text' && p.text)
+            .map((p: { text?: string }) => p.text as string)
             .join('\n')
           return textParts || null
         }
       }
     } catch {
-      // Parse error — try again next poll
+      // Error — try again next poll
     }
   }
 

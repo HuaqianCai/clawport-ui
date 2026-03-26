@@ -1,0 +1,305 @@
+{
+    "type": "event",
+    "event": "sessions.changed",
+    "payload": {
+        "sessionKey": "agent:weeklyloger:feishu:direct:ou_7a502ef0d229030a3965616cde5b0f4e",
+        "phase": "start",
+        "runId": "1dc9cca7-4e51-4af6-84c7-2a146de06c03",
+        "ts": 1774518727870,
+        "session": {
+            "key": "agent:weeklyloger:feishu:direct:ou_7a502ef0d229030a3965616cde5b0f4e",
+            "kind": "direct",
+            "chatType": "direct",
+            "origin": {
+                "provider": "webchat",
+                "surface": "webchat",
+                "chatType": "direct"
+            },
+            "updatedAt": 1774518727870,
+            "sessionId": "5b419b0f-908f-4b42-962e-c53c6bb542d3",
+            "systemSent": true,
+            "abortedLastRun": false,
+            "totalTokensFresh": false,
+            "estimatedCostUsd": 0,
+            "status": "running",
+            "startedAt": 1774518727870,
+            "modelProvider": "labgateway",
+            "model": "bailian-Kimi-k2.5",
+            "contextTokens": 200000,
+            "deliveryContext": {
+                "channel": "feishu"
+            },
+            "lastChannel": "feishu"
+        },
+        "totalTokensFresh": false,
+        "contextTokens": 200000,
+        "estimatedCostUsd": 0,
+        "modelProvider": "labgateway",
+        "model": "bailian-Kimi-k2.5",
+        "status": "running",
+        "startedAt": 1774518727870,
+        "updatedAt": 1774518727870,
+        "abortedLastRun": false
+    }
+}{
+    "type": "event",
+    "event": "sessions.changed",
+    "payload": {
+        "sessionKey": "agent:weeklyloger:feishu:direct:ou_7a502ef0d229030a3965616cde5b0f4e",
+        "phase": "message",
+        "ts": 1774518727880,
+        "messageSeq": 26,
+        "session": {
+            "key": "agent:weeklyloger:feishu:direct:ou_7a502ef0d229030a3965616cde5b0f4e",
+            "kind": "direct",
+            "chatType": "direct",
+            "origin": {
+                "provider": "webchat",
+                "surface": "webchat",
+                "chatType": "direct"
+            },
+            "updatedAt": 1774518727287,
+            "sessionId": "5b419b0f-908f-4b42-962e-c53c6bb542d3",
+            "systemSent": true,
+            "abortedLastRun": false,
+            "totalTokensFresh": false,
+            "estimatedCostUsd": 0,
+            "status": "done",
+            "startedAt": 1774517680902,
+            "endedAt": 1774517687308,
+            "runtimeMs": 6406,
+            "modelProvider": "labgateway",
+            "model": "bailian-Kimi-k2.5",
+            "contextTokens": 200000,
+            "deliveryContext": {
+                "channel": "feishu"
+            },
+            "lastChannel": "feishu"
+        },
+        "updatedAt": 1774518727287,
+        "sessionId": "5b419b0f-908f-4b42-962e-c53c6bb542d3",
+        "kind": "direct",
+        "deliveryContext": {
+            "channel": "feishu"
+        },
+        "systemSent": true,
+        "abortedLastRun": false,
+        "lastChannel": "feishu",
+        "totalTokensFresh": false,
+        "contextTokens": 200000,
+        "estimatedCostUsd": 0,
+        "modelProvider": "labgateway",
+        "model": "bailian-Kimi-k2.5",
+        "status": "done",
+        "startedAt": 1774517680902,
+        "endedAt": 1774517687308,
+        "runtimeMs": 6406
+    }
+}{
+    "type": "event",
+    "event": "sessions.changed",
+    "payload": {
+        "sessionKey": "agent:weeklyloger:feishu:direct:ou_7a502ef0d229030a3965616cde5b0f4e",
+        "phase": "message",
+        "ts": 1774518727885,
+        "messageId": "cb6b481e",
+        "messageSeq": 27,
+        "session": {
+            "key": "agent:weeklyloger:feishu:direct:ou_7a502ef0d229030a3965616cde5b0f4e",
+            "kind": "direct",
+            "chatType": "direct",
+            "origin": {
+                "provider": "webchat",
+                "surface": "webchat",
+                "chatType": "direct"
+            },
+            "updatedAt": 1774518727287,
+            "sessionId": "5b419b0f-908f-4b42-962e-c53c6bb542d3",
+            "systemSent": true,
+            "abortedLastRun": false,
+            "totalTokensFresh": false,
+            "estimatedCostUsd": 0,
+            "status": "done",
+            "startedAt": 1774517680902,
+            "endedAt": 1774517687308,
+            "runtimeMs": 6406,
+            "modelProvider": "labgateway",
+            "model": "bailian-Kimi-k2.5",
+            "contextTokens": 200000,
+            "deliveryContext": {
+                "channel": "feishu"
+            },
+            "lastChannel": "feishu"
+        },
+        "updatedAt": 1774518727287,
+        "sessionId": "5b419b0f-908f-4b42-962e-c53c6bb542d3",
+        "kind": "direct",
+        "deliveryContext": {
+            "channel": "feishu"
+        },
+        "systemSent": true,
+        "abortedLastRun": false,
+        "lastChannel": "feishu",
+        "totalTokensFresh": false,
+        "contextTokens": 200000,
+        "estimatedCostUsd": 0,
+        "modelProvider": "labgateway",
+        "model": "bailian-Kimi-k2.5",
+        "status": "done",
+        "startedAt": 1774517680902,
+        "endedAt": 1774517687308,
+        "runtimeMs": 6406
+    }
+}
+{
+    "type": "event",
+    "event": "sessions.changed",
+    "payload": {
+        "sessionKey": "agent:weeklyloger:feishu:direct:ou_7a502ef0d229030a3965616cde5b0f4e",
+        "phase": "message",
+        "ts": 1774518735295,
+        "messageId": "a004d196",
+        "messageSeq": 28,
+        "session": {
+            "key": "agent:weeklyloger:feishu:direct:ou_7a502ef0d229030a3965616cde5b0f4e",
+            "kind": "direct",
+            "chatType": "direct",
+            "origin": {
+                "provider": "webchat",
+                "surface": "webchat",
+                "chatType": "direct"
+            },
+            "updatedAt": 1774518728077,
+            "sessionId": "5b419b0f-908f-4b42-962e-c53c6bb542d3",
+            "systemSent": true,
+            "abortedLastRun": false,
+            "totalTokensFresh": false,
+            "estimatedCostUsd": 0,
+            "status": "running",
+            "startedAt": 1774518727870,
+            "modelProvider": "labgateway",
+            "model": "bailian-Kimi-k2.5",
+            "contextTokens": 200000,
+            "deliveryContext": {
+                "channel": "feishu"
+            },
+            "lastChannel": "feishu"
+        },
+        "updatedAt": 1774518728077,
+        "sessionId": "5b419b0f-908f-4b42-962e-c53c6bb542d3",
+        "kind": "direct",
+        "deliveryContext": {
+            "channel": "feishu"
+        },
+        "systemSent": true,
+        "abortedLastRun": false,
+        "lastChannel": "feishu",
+        "totalTokensFresh": false,
+        "contextTokens": 200000,
+        "estimatedCostUsd": 0,
+        "modelProvider": "labgateway",
+        "model": "bailian-Kimi-k2.5",
+        "status": "running",
+        "startedAt": 1774518727870
+    }
+}
+{
+    "type": "event",
+    "event": "sessions.changed",
+    "payload": {
+        "sessionKey": "agent:weeklyloger:feishu:direct:ou_7a502ef0d229030a3965616cde5b0f4e",
+        "phase": "message",
+        "ts": 1774518739774,
+        "messageId": "64d8216f",
+        "messageSeq": 30,
+        "session": {
+            "key": "agent:weeklyloger:feishu:direct:ou_7a502ef0d229030a3965616cde5b0f4e",
+            "kind": "direct",
+            "chatType": "direct",
+            "origin": {
+                "provider": "webchat",
+                "surface": "webchat",
+                "chatType": "direct"
+            },
+            "updatedAt": 1774518728077,
+            "sessionId": "5b419b0f-908f-4b42-962e-c53c6bb542d3",
+            "systemSent": true,
+            "abortedLastRun": false,
+            "totalTokensFresh": false,
+            "estimatedCostUsd": 0,
+            "status": "running",
+            "startedAt": 1774518727870,
+            "modelProvider": "labgateway",
+            "model": "bailian-Kimi-k2.5",
+            "contextTokens": 200000,
+            "deliveryContext": {
+                "channel": "feishu"
+            },
+            "lastChannel": "feishu"
+        },
+        "updatedAt": 1774518728077,
+        "sessionId": "5b419b0f-908f-4b42-962e-c53c6bb542d3",
+        "kind": "direct",
+        "deliveryContext": {
+            "channel": "feishu"
+        },
+        "systemSent": true,
+        "abortedLastRun": false,
+        "lastChannel": "feishu",
+        "totalTokensFresh": false,
+        "contextTokens": 200000,
+        "estimatedCostUsd": 0,
+        "modelProvider": "labgateway",
+        "model": "bailian-Kimi-k2.5",
+        "status": "running",
+        "startedAt": 1774518727870
+    }
+}
+{
+    "type": "event",
+    "event": "sessions.changed",
+    "payload": {
+        "sessionKey": "agent:weeklyloger:feishu:direct:ou_7a502ef0d229030a3965616cde5b0f4e",
+        "phase": "end",
+        "runId": "1dc9cca7-4e51-4af6-84c7-2a146de06c03",
+        "ts": 1774518739777,
+        "session": {
+            "key": "agent:weeklyloger:feishu:direct:ou_7a502ef0d229030a3965616cde5b0f4e",
+            "kind": "direct",
+            "chatType": "direct",
+            "origin": {
+                "provider": "webchat",
+                "surface": "webchat",
+                "chatType": "direct"
+            },
+            "updatedAt": 1774518739777,
+            "sessionId": "5b419b0f-908f-4b42-962e-c53c6bb542d3",
+            "systemSent": true,
+            "abortedLastRun": false,
+            "totalTokensFresh": false,
+            "estimatedCostUsd": 0,
+            "status": "done",
+            "startedAt": 1774518727870,
+            "endedAt": 1774518739777,
+            "runtimeMs": 11907,
+            "modelProvider": "labgateway",
+            "model": "bailian-Kimi-k2.5",
+            "contextTokens": 200000,
+            "deliveryContext": {
+                "channel": "feishu"
+            },
+            "lastChannel": "feishu"
+        },
+        "totalTokensFresh": false,
+        "contextTokens": 200000,
+        "estimatedCostUsd": 0,
+        "modelProvider": "labgateway",
+        "model": "bailian-Kimi-k2.5",
+        "status": "done",
+        "startedAt": 1774518727870,
+        "endedAt": 1774518739777,
+        "runtimeMs": 11907,
+        "updatedAt": 1774518739777,
+        "abortedLastRun": false
+    }
+}

@@ -2,8 +2,20 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Agent } from '@/lib/types'
+import { agentsList, agentIdentityGet, getConnectionState, onConnectionStateChange } from './gateway-ws-client'
+import { useGateway } from '@/components/GatewayProvider'
 
-const POLL_INTERVAL = 30_000 // 30 seconds
+// Color palette for agents without configured colors
+const AGENT_COLORS = [
+  '#3b82f6', // blue
+  '#10b981', // emerald
+  '#f59e0b', // amber
+  '#ef4444', // red
+  '#8b5cf6', // violet
+  '#ec4899', // pink
+  '#06b6d4', // cyan
+  '#84cc16', // lime
+]
 
 export interface UseAgentsResult {
   agents: Agent[]
@@ -20,91 +32,91 @@ export function useAgents(): UseAgentsResult {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<number | null>(null)
-  const fingerprintRef = useRef<string | null>(null)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const fetchingRef = useRef(false)
+  const { isReady } = useGateway()
 
-  // Full agent fetch
+  // Fetch agents via WebSocket
   const fetchAgents = useCallback(async () => {
+    // Prevent duplicate calls
+    if (fetchingRef.current) return
+    fetchingRef.current = true
+
     try {
-      const res = await fetch('/api/agents')
-      if (!res.ok) throw new Error('Failed to fetch agents')
-      const data: Agent[] = await res.json()
-      setAgents(data)
+      setLoading(true)
+      const gatewayAgents = await agentsList()
+      const agentList = Array.isArray(gatewayAgents) ? gatewayAgents : []
+
+      // Fetch identity for each agent (in parallel for speed)
+      const identityPromises = agentList.map(async (ga, index) => {
+        const gaObj = ga as Record<string, unknown>
+        const agentId = String(gaObj.id || '')
+
+        // Get identity (avatar) from gateway
+        const identity = await agentIdentityGet(agentId)
+
+        return {
+          id: agentId,
+          name: identity?.name || String(gaObj.name || gaObj.id || ''),
+          avatar: identity?.avatar || '🤖',
+          model: typeof gaObj.model === 'string' ? gaObj.model : null,
+          color: AGENT_COLORS[index % AGENT_COLORS.length],
+        }
+      })
+
+      const identityResults = await Promise.all(identityPromises)
+
+      // Transform to Agent type
+      const transformed: Agent[] = identityResults.map(r => ({
+        id: r.id,
+        name: r.name,
+        title: 'Agent',
+        reportsTo: null,
+        directReports: [],
+        soulPath: null,
+        soul: null,
+        voiceId: null,
+        color: r.color,
+        emoji: r.avatar,
+        tools: [],
+        model: r.model,
+        memoryPath: null,
+        description: '',
+        crons: [],
+      }))
+
+      setAgents(transformed)
       setError(null)
       setLastUpdated(Date.now())
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
       setLoading(false)
+      fetchingRef.current = false
     }
   }, [])
 
-  // Check fingerprint and refetch if changed
-  const checkFingerprint = useCallback(async () => {
-    try {
-      const res = await fetch('/api/agents/fingerprint')
-      if (!res.ok) return
-      const { fingerprint } = await res.json()
-      if (fingerprintRef.current !== null && fingerprint !== fingerprintRef.current) {
+  const refresh = useCallback(() => {
+    fetchAgents()
+  }, [fetchAgents])
+
+  // Wait for isReady before fetching, then refetch on connection
+  useEffect(() => {
+    // Don't fetch until gateway is ready (token set)
+    if (!isReady) return
+
+    fetchAgents()
+
+    // Subscribe to connection state changes - refetch when connected
+    const unsubscribe = onConnectionStateChange((state) => {
+      if (state === 'connected') {
         fetchAgents()
       }
-      fingerprintRef.current = fingerprint
-    } catch {
-      // Silently ignore fingerprint check failures
-    }
-  }, [fetchAgents])
-
-  // Public refresh: force full refetch + update fingerprint
-  const refresh = useCallback(() => {
-    setLoading(true)
-    fetchAgents().then(() => {
-      // Update fingerprint after refetch so next poll doesn't double-fetch
-      fetch('/api/agents/fingerprint')
-        .then(r => r.json())
-        .then(({ fingerprint }) => {
-          fingerprintRef.current = fingerprint
-        })
-        .catch(() => {})
     })
-  }, [fetchAgents])
 
-  // Initial fetch + start polling
-  useEffect(() => {
-    // Fetch agents + initial fingerprint in parallel
-    fetchAgents()
-    fetch('/api/agents/fingerprint')
-      .then(r => r.json())
-      .then(({ fingerprint }) => {
-        fingerprintRef.current = fingerprint
-      })
-      .catch(() => {})
-
-    intervalRef.current = setInterval(checkFingerprint, POLL_INTERVAL)
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
+      unsubscribe()
     }
-  }, [fetchAgents, checkFingerprint])
-
-  // Pause polling when tab is hidden, resume + immediate check when visible
-  useEffect(() => {
-    function handleVisibilityChange() {
-      if (document.hidden) {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current)
-          intervalRef.current = null
-        }
-      } else {
-        // Immediate check on tab focus
-        checkFingerprint()
-        intervalRef.current = setInterval(checkFingerprint, POLL_INTERVAL)
-      }
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [checkFingerprint])
+  }, [fetchAgents, isReady])
 
   return { agents, loading, error, refresh, lastUpdated }
 }

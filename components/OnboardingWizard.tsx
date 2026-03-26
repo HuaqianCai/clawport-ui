@@ -7,6 +7,8 @@ import { useTheme } from '@/app/providers'
 import { THEMES } from '@/lib/themes'
 import type { ThemeId } from '@/lib/themes'
 import { fetchOnboarded, syncOnboarded } from '@/lib/conversations'
+import { useGateway } from '@/components/GatewayProvider'
+import { cronList } from '@/lib/gateway-ws-client'
 
 // ---------------------------------------------------------------------------
 // Accent color presets (same as settings page)
@@ -81,6 +83,7 @@ export function OnboardingWizard({ forceOpen, onClose }: OnboardingWizardProps) 
     setAccentColor,
   } = useSettings()
   const { theme, setTheme } = useTheme()
+  const { isConnected, connect } = useGateway()
 
   const [visible, setVisible] = useState(false)
   const [step, setStep] = useState(0)
@@ -137,7 +140,7 @@ export function OnboardingWizard({ forceOpen, onClose }: OnboardingWizardProps) 
     setAgentsError(null)
     setCronsError(null)
 
-    // Check agents
+    // Check agents (still via HTTP API for now - agents list requires workspace path)
     fetch('/api/agents')
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
@@ -162,19 +165,20 @@ export function OnboardingWizard({ forceOpen, onClose }: OnboardingWizardProps) 
         setAgentsStatus('error')
       })
 
-    // Check crons (validates gateway + openclaw binary)
-    fetch('/api/crons')
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return r.json()
-      })
-      .then(() => {
+    // Check crons via WebSocket RPC (validates gateway connection)
+    async function checkCrons() {
+      try {
+        if (!isConnected) {
+          await connect()
+        }
+        await cronList()
         setCronsStatus('ok')
-      })
-      .catch(() => {
+      } catch {
         setCronsError('Could not reach OpenClaw gateway. Run: openclaw gateway run')
         setCronsStatus('error')
-      })
+      }
+    }
+    checkCrons()
   }
 
   const TOTAL_STEPS = 7

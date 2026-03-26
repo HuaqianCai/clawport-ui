@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CostSummary, CronJob, RunCost, ClaudeCodeUsage } from '@/lib/types'
 import { useAgentsContext } from '@/app/agents-provider'
+import { useGateway } from '@/components/GatewayProvider'
+import { cronList } from '@/lib/gateway-ws-client'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AlertTriangle, TrendingDown, TrendingUp, Activity, MessageSquare, ChevronDown } from 'lucide-react'
 import { generateId } from '@/lib/id'
@@ -30,6 +32,7 @@ interface CostChatMessage {
 
 export function CostsPage() {
   const { agents } = useAgentsContext()
+  const { isConnected, connect } = useGateway()
   const [data, setData] = useState<CostSummary | null>(null)
   const [jobNames, setJobNames] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
@@ -56,30 +59,32 @@ export function CostsPage() {
     setLoading(true)
     setError(null)
 
-    Promise.all([
-      fetch('/api/costs').then(r => {
-        if (!r.ok) throw new Error('Failed to load costs')
-        return r.json()
-      }),
-      fetch('/api/crons').then(r => {
-        if (!r.ok) throw new Error('Failed to load crons')
-        return r.json()
-      }),
-    ])
-      .then(([costData, cronData]: [CostSummary, { crons: CronJob[] }]) => {
+    async function loadData() {
+      try {
+        if (!isConnected) {
+          await connect()
+        }
+        const [costData, jobs] = await Promise.all([
+          fetch('/api/costs').then(r => {
+            if (!r.ok) throw new Error('Failed to load costs')
+            return r.json() as Promise<CostSummary>
+          }),
+          cronList(),
+        ])
         setData(costData)
         const names: Record<string, string> = {}
-        for (const c of cronData.crons) {
-          names[c.id] = c.name
+        for (const j of (jobs as Record<string, unknown>[])) {
+          names[String(j.id || j.name || '')] = String(j.name || '')
         }
         setJobNames(names)
-        setLoading(false)
-      })
-      .catch(err => {
+      } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error')
+      } finally {
         setLoading(false)
-      })
-  }, [])
+      }
+    }
+    loadData()
+  }, [isConnected, connect])
 
   // Claude Code usage SSE stream
   useEffect(() => {

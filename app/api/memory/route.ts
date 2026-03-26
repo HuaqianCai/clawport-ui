@@ -8,7 +8,7 @@ export async function GET() {
   try {
     const files = await getMemoryFiles()
     const config = getMemoryConfig()
-    const status = getMemoryStatus()
+    const status = await getMemoryStatus()
     const stats = computeMemoryStats(files)
     const health = computeMemoryHealth(files, config, status, stats)
     return NextResponse.json({ files, config, status, stats, health })

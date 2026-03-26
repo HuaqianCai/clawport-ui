@@ -1,9 +1,8 @@
 import { readFileSync, existsSync, readdirSync } from 'fs'
-import { execSync } from 'child_process'
 import { join, basename } from 'path'
 import bundledRegistry from '@/lib/agents.json'
 import type { Agent } from '@/lib/types'
-import { extractJson } from '@/lib/cli-utils'
+import { agentsList } from './gateway-websocket'
 
 /** Raw agent data from JSON (everything except runtime-loaded soul and crons) */
 export type AgentEntry = Omit<Agent, 'soul' | 'crons'>
@@ -417,13 +416,13 @@ export function clearRegistryCache(): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Raw entry from `openclaw agents list --json`.
+ * Raw entry from `agents.list` RPC.
  *
- * Real CLI output shape (verified against OpenClaw docs + live CLI):
+ * Expected fields:
  *   { id, identityName, identityEmoji, identitySource,
  *     workspace, agentDir, model, bindings, isDefault, routes }
  */
-interface CliAgentEntry {
+interface RpcAgentEntry {
   id: string
   identityName?: string
   identityEmoji?: string
@@ -433,26 +432,21 @@ interface CliAgentEntry {
 }
 
 /**
- * Call `openclaw agents list --json` and return parsed entries.
- * Returns null on any failure (CLI not found, bad JSON, timeout).
+ * Call agents.list RPC and return parsed entries.
+ * Returns null on any failure (connection error, timeout).
  */
-export function listCliAgents(openclawBin: string): CliAgentEntry[] | null {
+export async function listRpcAgents(): Promise<RpcAgentEntry[] | null> {
   try {
-    const raw = execSync(`${openclawBin} agents list --json`, {
-      encoding: 'utf-8',
-      timeout: 10000,
-    })
-    const parsed = extractJson(raw)
-    const agents: unknown[] = Array.isArray(parsed) ? parsed : []
-    if (agents.length === 0) return null
-    return agents as CliAgentEntry[]
+    const agents = await agentsList()
+    if (!Array.isArray(agents) || agents.length === 0) return null
+    return agents as RpcAgentEntry[]
   } catch {
     return null
   }
 }
 
 /**
- * Scan additional workspaces found via CLI that differ from the primary
+ * Scan additional workspaces found via RPC that differ from the primary
  * WORKSPACE_PATH. For each extra workspace, run discoverAgents() and
  * merge results into the existing registry.
  *
@@ -462,35 +456,35 @@ export function listCliAgents(openclawBin: string): CliAgentEntry[] | null {
  */
 function mergeExtraWorkspaces(
   existing: AgentEntry[],
-  cliAgents: CliAgentEntry[],
+  rpcAgents: RpcAgentEntry[],
   primaryWorkspace: string,
 ): AgentEntry[] {
   const existingIds = new Set(existing.map(a => a.id))
   const added: AgentEntry[] = []
   let colorIndex = existing.length
 
-  for (const cli of cliAgents) {
-    const ws = cli.workspace
+  for (const rpc of rpcAgents) {
+    const ws = rpc.workspace
     // Skip agents whose workspace matches the primary (already discovered)
     if (!ws || ws === primaryWorkspace) continue
 
-    // Use CLI agent ID as the canonical ID for this workspace
-    const cliId = cli.id
-    if (existingIds.has(cliId)) continue
+    // Use RPC agent ID as the canonical ID for this workspace
+    const rpcId = rpc.id
+    if (existingIds.has(rpcId)) continue
 
     // Try discovering agents from this workspace's filesystem
     const discovered = discoverAgents(ws)
 
     if (discovered && discovered.length > 0) {
-      // Take the first (root) agent from discovered and merge with CLI data
+      // Take the first (root) agent from discovered and merge with RPC data
       const discoveredAgent = discovered[0]
 
-      // Use CLI ID as canonical, prefer CLI identity if available, otherwise slug from ID
-      const name = cli.identityName || slugToName(cliId)
-      const emoji = cli.identityEmoji || name.charAt(0).toUpperCase()
+      // Use RPC ID as canonical, prefer RPC identity if available, otherwise slug from ID
+      const name = rpc.identityName || slugToName(rpcId)
+      const emoji = rpc.identityEmoji || name.charAt(0).toUpperCase()
 
       added.push({
-        id: cliId,
+        id: rpcId,
         name,
         title: discoveredAgent.title || 'Agent',
         reportsTo: null,
@@ -500,16 +494,16 @@ function mergeExtraWorkspaces(
         color: DISCOVER_COLORS[colorIndex++ % DISCOVER_COLORS.length],
         emoji,
         tools: discoveredAgent.tools,
-        model: cli.model || discoveredAgent.model,
+        model: rpc.model || discoveredAgent.model,
         memoryPath: discoveredAgent.memoryPath,
         description: discoveredAgent.description || `${name} agent.`,
       })
-      existingIds.add(cliId)
+      existingIds.add(rpcId)
     } else {
-      // Workspace has no discoverable agents — create a minimal entry from CLI identity
-      const name = cli.identityName || slugToName(cliId)
+      // Workspace has no discoverable agents — create a minimal entry from RPC identity
+      const name = rpc.identityName || slugToName(rpcId)
       added.push({
-        id: cliId,
+        id: rpcId,
         name,
         title: 'Agent',
         reportsTo: null,
@@ -517,13 +511,13 @@ function mergeExtraWorkspaces(
         soulPath: null,
         voiceId: null,
         color: DISCOVER_COLORS[colorIndex++ % DISCOVER_COLORS.length],
-        emoji: cli.identityEmoji || name.charAt(0).toUpperCase(),
+        emoji: rpc.identityEmoji || name.charAt(0).toUpperCase(),
         tools: ['read', 'write'],
-        model: cli.model || null,
+        model: rpc.model || null,
         memoryPath: null,
         description: `${name} agent.`,
       })
-      existingIds.add(cliId)
+      existingIds.add(rpcId)
     }
   }
 
@@ -531,23 +525,23 @@ function mergeExtraWorkspaces(
 }
 
 /**
- * Enrich filesystem-discovered agents with model data from CLI output.
+ * Enrich filesystem-discovered agents with model data from RPC output.
  *
- * All agents in a workspace share the CLI agent's configured model.
- * CLI agents are matched to discovered agents by workspace path.
+ * All agents in a workspace share the RPC agent's configured model.
+ * RPC agents are matched to discovered agents by workspace path.
  */
-function enrichModelsFromCli(
+function enrichModelsFromRpc(
   agents: AgentEntry[],
-  cliAgents: CliAgentEntry[],
+  rpcAgents: RpcAgentEntry[],
   primaryWorkspace: string,
 ): void {
-  // Find CLI agent(s) for the primary workspace — take the default or first match
-  const primaryCli = cliAgents.find(c => c.workspace === primaryWorkspace && c.isDefault)
-    || cliAgents.find(c => c.workspace === primaryWorkspace)
-  if (primaryCli?.model) {
+  // Find RPC agent(s) for the primary workspace — take the default or first match
+  const primaryRpc = rpcAgents.find(c => c.workspace === primaryWorkspace && c.isDefault)
+    || rpcAgents.find(c => c.workspace === primaryWorkspace)
+  if (primaryRpc?.model) {
     for (const agent of agents) {
       if (!agent.model) {
-        agent.model = primaryCli.model
+        agent.model = primaryRpc.model
       }
     }
   }
@@ -559,17 +553,16 @@ function enrichModelsFromCli(
  * Resolution order:
  *   1. $WORKSPACE_PATH/clawport/agents.json  (user's own config)
  *   2. Auto-discovered from $WORKSPACE_PATH   (agents/ directory scan)
- *      + merged with other workspaces from `openclaw agents list --json`
- *   3. CLI-only discovery (scans each agent's workspace)
+ *      + merged with other workspaces from agents.list RPC
+ *   3. RPC-only discovery (scans each agent's workspace)
  *   4. Bundled lib/agents.json               (default example registry)
  */
-export function loadRegistry(): AgentEntry[] {
+export async function loadRegistry(): Promise<AgentEntry[]> {
   if (_registryCache && Date.now() - _registryCache.ts < REGISTRY_TTL) {
     return _registryCache.result
   }
 
   const workspacePath = process.env.WORKSPACE_PATH
-  const openclawBin = process.env.OPENCLAW_BIN
 
   const cacheAndReturn = (result: AgentEntry[]): AgentEntry[] => {
     _registryCache = { result, ts: Date.now() }
@@ -591,25 +584,22 @@ export function loadRegistry(): AgentEntry[] {
     // 2. Auto-discover from primary workspace filesystem
     const discovered = discoverAgents(workspacePath)
 
-    // 2b. Enrich with CLI model data + merge other workspaces
-    if (discovered && openclawBin) {
-      const cliAgents = listCliAgents(openclawBin)
-      if (cliAgents) {
-        enrichModelsFromCli(discovered, cliAgents, workspacePath)
-        if (cliAgents.length > 1) {
-          return cacheAndReturn(mergeExtraWorkspaces(discovered, cliAgents, workspacePath))
+    // 2b. Enrich with RPC model data + merge other workspaces
+    if (discovered) {
+      const rpcAgents = await listRpcAgents()
+      if (rpcAgents) {
+        enrichModelsFromRpc(discovered, rpcAgents, workspacePath)
+        if (rpcAgents.length > 1) {
+          return cacheAndReturn(mergeExtraWorkspaces(discovered, rpcAgents, workspacePath))
         }
       }
       return cacheAndReturn(discovered)
     }
-    if (discovered) return cacheAndReturn(discovered)
 
-    // 3. CLI-only: no primary workspace agents, scan each CLI agent's workspace
-    if (openclawBin) {
-      const cliAgents = listCliAgents(openclawBin)
-      if (cliAgents) {
-        return cacheAndReturn(mergeExtraWorkspaces([], cliAgents, ''))
-      }
+    // 3. RPC-only: no primary workspace agents, scan each RPC agent's workspace
+    const rpcAgents = await listRpcAgents()
+    if (rpcAgents) {
+      return cacheAndReturn(mergeExtraWorkspaces([], rpcAgents, ''))
     }
   }
 

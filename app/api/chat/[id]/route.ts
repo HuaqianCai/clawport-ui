@@ -4,10 +4,7 @@ import { getAgent } from '@/lib/agents'
 import { validateChatMessages } from '@/lib/validation'
 import { hasImageContent, extractImageAttachments, buildTextPrompt, sendViaOpenClaw } from '@/lib/anthropic'
 import { getOpenAIClient } from '@/lib/openai'
-import { gatewayToken } from '@/lib/env'
 import type OpenAI from 'openai'
-
-const GATEWAY_TOKEN = gatewayToken()
 
 export async function POST(
   request: Request,
@@ -57,12 +54,11 @@ export async function POST(
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')
   const latestHasImages = lastUserMsg ? hasImageContent([lastUserMsg]) : false
 
-  if (latestHasImages && GATEWAY_TOKEN) {
+  if (latestHasImages) {
     const attachments = extractImageAttachments([lastUserMsg!])
     const textPrompt = buildTextPrompt(systemPrompt, messages)
 
     const response = await sendViaOpenClaw({
-      gatewayToken: GATEWAY_TOKEN,
       message: textPrompt,
       attachments,
     })

@@ -11,6 +11,8 @@ import { ErrorState } from "@/components/ErrorState"
 import { AgentAvatar } from "@/components/AgentAvatar"
 import { GridView } from "@/components/GridView"
 import { FeedView } from "@/components/FeedView"
+import { useGateway } from "@/components/GatewayProvider"
+import { cronList } from "@/lib/gateway-ws-client"
 
 const OrgMap = dynamic(
   () => import("@/components/OrgMap").then((m) => ({ default: m.OrgMap })),
@@ -119,6 +121,7 @@ const VIEW_OPTIONS: { key: View; label: string }[] = [
 export default function HomePage() {
   const router = useRouter()
   const { agents, loading: agentsLoading, error: agentsError, refresh: refreshAgents } = useAgentsContext()
+  const { isConnected, isReady, connect } = useGateway()
   const [crons, setCrons] = useState<CronJob[]>([])
   const [selected, setSelected] = useState<Agent | null>(null)
   const [cronsLoading, setCronsLoading] = useState(true)
@@ -129,24 +132,58 @@ export default function HomePage() {
   const loading = agentsLoading || cronsLoading
   const error = agentsError || cronsError
 
-  const loadCrons = useCallback(() => {
+  const loadCrons = useCallback(async () => {
     setCronsLoading(true)
     setCronsError(null)
-    fetch("/api/crons")
-      .then((r) => {
-        if (!r.ok) throw new Error("Failed to fetch crons")
-        return r.json()
-      })
-      .then((cronData) => {
-        setCrons(Array.isArray(cronData) ? cronData : cronData.crons ?? [])
-      })
-      .catch((e) => setCronsError(e.message))
-      .finally(() => setCronsLoading(false))
-  }, [])
+    try {
+      // connect() is idempotent - will return early if already connected
+      await connect()
+      const jobs = await cronList()
+      // Transform raw jobs to CronJob format
+      const transformed: CronJob[] = (jobs as Record<string, unknown>[]).map((j) => {
+        const state = (j.state as Record<string, unknown>) || {}
+        const rawStatus = state.status ?? j.status ?? ""
+        let status: 'ok' | 'error' | 'idle' = 'idle'
+        if (rawStatus === 'error' || rawStatus === 'failed') status = 'error'
+        else if (rawStatus === 'ok' || rawStatus === 'success' || rawStatus === 'completed') status = 'ok'
 
+        const nextRunMs = state.nextRunAtMs ?? state.nextRunAt ?? j.nextRunAtMs ?? j.nextRunAt
+        const lastRunRaw = state.lastRunAtMs ?? state.lastRunAt ?? j.lastRunAtMs ?? j.lastRunAt ?? j.last
+
+        return {
+          id: String(j.id || j.name || ''),
+          name: String(j.name || ''),
+          schedule: String(j.schedule || ''),
+          scheduleDescription: '',
+          timezone: (j.timezone as string) ?? null,
+          status,
+          lastRun: lastRunRaw ? (typeof lastRunRaw === 'number' ? new Date(lastRunRaw).toISOString() : String(lastRunRaw)) : null,
+          nextRun: nextRunMs ? new Date(Number(nextRunMs)).toISOString() : null,
+          lastError: (state.lastError ?? state.error ?? j.lastError) ? String(state.lastError ?? state.error ?? j.lastError) : null,
+          agentId: null,
+          description: typeof j.description === 'string' ? j.description : null,
+          enabled: j.enabled !== false,
+          delivery: null,
+          lastDurationMs: typeof state.lastDurationMs === 'number' ? state.lastDurationMs : null,
+          consecutiveErrors: typeof state.consecutiveErrors === 'number' ? state.consecutiveErrors : 0,
+          lastDeliveryStatus: typeof state.lastDeliveryStatus === 'string' ? state.lastDeliveryStatus : null,
+        }
+      })
+      setCrons(transformed)
+    } catch (e) {
+      setCronsError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setCronsLoading(false)
+    }
+  }, [connect])
+
+  // Wait for isReady before loading crons
   useEffect(() => {
+    // Don't load until gateway is ready (token set)
+    if (!isReady) return
+
     loadCrons()
-  }, [loadCrons])
+  }, [loadCrons, isReady])
 
   const loadData = useCallback(() => {
     refreshAgents()

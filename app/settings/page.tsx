@@ -120,7 +120,7 @@ export default function SettingsPage() {
     >
       <div
         style={{
-          maxWidth: 600,
+          maxWidth: 720,
           margin: '0 auto',
           padding: 'var(--space-6) var(--space-4) var(--space-12)',
         }}
@@ -851,7 +851,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* ── Section 4: Reset All ── */}
+        {/* ── Section 4: Actions ── */}
         <section>
           <div
             style={{
@@ -860,118 +860,131 @@ export default function SettingsPage() {
               border: '1px solid var(--separator)',
               padding: 'var(--space-4)',
               display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              flexDirection: 'column',
               gap: 'var(--space-3)',
             }}
           >
-            <button
-              onClick={() => setWizardOpen(true)}
-              className="btn-scale"
+            {/* Primary actions */}
+            <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center' }}>
+              <button
+                onClick={() => setWizardOpen(true)}
+                className="btn-scale"
+                style={{
+                  padding: 'var(--space-2) var(--space-5)',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--accent)',
+                  color: 'var(--accent-contrast)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 'var(--text-body)',
+                  fontWeight: 'var(--weight-semibold)',
+                  transition: 'all 150ms var(--ease-spring)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                }}
+              >
+                <RotateCcw size={16} />
+                Re-run Setup
+              </button>
+              <button
+                onClick={() => {
+                  refreshAgents()
+                  setRescanResult(null)
+                  setTimeout(() => {
+                    setRescanResult(`${agents.length} agents`)
+                    setTimeout(() => setRescanResult(null), 2000)
+                  }, 600)
+                }}
+                className="btn-scale"
+                style={{
+                  padding: 'var(--space-2) var(--space-5)',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--fill-tertiary)',
+                  color: 'var(--text-primary)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 'var(--text-body)',
+                  fontWeight: 'var(--weight-semibold)',
+                  transition: 'all 150ms var(--ease-spring)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                }}
+              >
+                <RefreshCw size={16} className={agentsLoading ? 'animate-spin' : ''} />
+                {rescanResult || 'Rescan'}
+              </button>
+            </div>
+
+            {/* Danger zone */}
+            <div
               style={{
-                padding: 'var(--space-2) var(--space-6)',
-                borderRadius: 'var(--radius-md)',
-                background: 'var(--accent)',
-                color: 'var(--accent-contrast)',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 'var(--text-body)',
-                fontWeight: 'var(--weight-semibold)',
-                transition: 'all 150ms var(--ease-spring)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
+                borderTop: '1px solid var(--separator)',
+                paddingTop: 'var(--space-3)',
+                display: 'flex',
+                gap: 'var(--space-3)',
+                justifyContent: 'center',
               }}
             >
-              <RotateCcw size={16} />
-              Re-run Setup
-            </button>
-            <button
-              onClick={() => {
-                refreshAgents()
-                setRescanResult(null)
-                // Show result after a short delay to let the fetch complete
-                setTimeout(() => {
-                  setRescanResult(`Found ${agents.length} agents`)
-                  setTimeout(() => setRescanResult(null), 2000)
-                }, 600)
-              }}
-              className="btn-scale"
-              style={{
-                padding: 'var(--space-2) var(--space-6)',
-                borderRadius: 'var(--radius-md)',
-                background: 'var(--fill-tertiary)',
-                color: 'var(--text-primary)',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 'var(--text-body)',
-                fontWeight: 'var(--weight-semibold)',
-                transition: 'all 150ms var(--ease-spring)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-              }}
-            >
-              <RefreshCw size={16} className={agentsLoading ? 'animate-spin' : ''} />
-              {rescanResult || 'Rescan Agents'}
-            </button>
-            <button
-              onClick={() => {
-                if (window.confirm('Reset all settings to defaults?')) {
-                  resetAll()
-                }
-              }}
-              className="btn-scale"
-              style={{
-                padding: 'var(--space-2) var(--space-6)',
-                borderRadius: 'var(--radius-md)',
-                background: 'var(--system-red)',
-                color: '#fff',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 'var(--text-body)',
-                fontWeight: 'var(--weight-semibold)',
-                transition: 'all 150ms var(--ease-spring)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-              }}
-            >
-              <Trash2 size={16} />
-              Reset All Settings
-            </button>
-            <button
-              onClick={async () => {
-                if (!window.confirm('Delete all server-side conversation data?')) return
-                try {
-                  const res = await fetch('/api/conversations')
-                  if (!res.ok) throw new Error()
-                  const ids: string[] = await res.json()
-                  ids.forEach(id => deleteOnServer(id))
-                  alert('Cleared')
-                } catch {
-                  alert('Failed to clear server data')
-                }
-              }}
-              className="btn-scale"
-              style={{
-                padding: 'var(--space-2) var(--space-6)',
-                borderRadius: 'var(--radius-md)',
-                background: 'var(--system-red)',
-                color: '#fff',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 'var(--text-body)',
-                fontWeight: 'var(--weight-semibold)',
-                transition: 'all 150ms var(--ease-spring)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-              }}
-            >
-              <Trash2 size={16} />
-              Clear Server Data
-            </button>
+              <button
+                onClick={() => {
+                  if (window.confirm('Reset all settings to defaults?')) {
+                    resetAll()
+                  }
+                }}
+                className="btn-scale"
+                style={{
+                  padding: 'var(--space-2) var(--space-4)',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--fill-tertiary)',
+                  color: 'var(--system-red)',
+                  border: '1px solid var(--separator)',
+                  cursor: 'pointer',
+                  fontSize: 'var(--text-footnote)',
+                  fontWeight: 'var(--weight-medium)',
+                  transition: 'all 150ms var(--ease-spring)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-1)',
+                }}
+              >
+                <Trash2 size={14} />
+                Reset Settings
+              </button>
+              <button
+                onClick={async () => {
+                  if (!window.confirm('Delete all server-side conversation data?')) return
+                  try {
+                    const res = await fetch('/api/conversations')
+                    if (!res.ok) throw new Error()
+                    const ids: string[] = await res.json()
+                    ids.forEach(id => deleteOnServer(id))
+                    alert('Cleared')
+                  } catch {
+                    alert('Failed to clear server data')
+                  }
+                }}
+                className="btn-scale"
+                style={{
+                  padding: 'var(--space-2) var(--space-4)',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--fill-tertiary)',
+                  color: 'var(--system-red)',
+                  border: '1px solid var(--separator)',
+                  cursor: 'pointer',
+                  fontSize: 'var(--text-footnote)',
+                  fontWeight: 'var(--weight-medium)',
+                  transition: 'all 150ms var(--ease-spring)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-1)',
+                }}
+              >
+                <Trash2 size={14} />
+                Clear Server Data
+              </button>
+            </div>
           </div>
         </section>
 
